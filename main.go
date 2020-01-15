@@ -88,10 +88,13 @@ func DownloadFromS3UploadToSftp(ctx context.Context, s3ObjectInput *s3.GetObject
 		// No issue
 	case <-ctx.Done():
 		// cancelFunc called
-		if errDownloader == nil {
+		if errDownloader != nil {
+			return errDownloader
+		}
+		if errUploader != nil {
 			return errUploader
 		}
-		return errDownloader
+		return ctx.Err()
 	}
 
 	return nil
