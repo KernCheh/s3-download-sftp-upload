@@ -9,7 +9,7 @@ import (
 	"github.com/sephora-sea/s3-download-sftp-upload/internal/clock"
 )
 
-func TestGetFileName(t *testing.T) {
+func TestgetFileName(t *testing.T) {
 
 	type args struct {
 		clock clock.Clock
@@ -31,8 +31,8 @@ func TestGetFileName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := GetFileName(tt.args.clock, tt.args.s3key); got != tt.want {
-				t.Errorf("GetFileName() = %v, want %v", got, tt.want)
+			if got := getFileName(tt.args.clock, tt.args.s3key); got != tt.want {
+				t.Errorf("getFileName() = %v, want %v", got, tt.want)
 			}
 		})
 	}

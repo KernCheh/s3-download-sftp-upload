@@ -41,10 +41,6 @@ func Handler(ctx context.Context, s3Event events.S3Event) {
 	}
 }
 
-func main() {
-	lambda.Start(Handler)
-}
-
 // DownloadFromS3UploadToSftp downloads the file specified in s3ObjectInput and upload to SFTP server specified in environment variables `SFTP_HOST`, `SFTP_PORT`, `SFTP_USERNAME`, `SFTP_PASSWORD` and `UPLOAD_PATH`
 func DownloadFromS3UploadToSftp(ctx context.Context, s3ObjectInput *s3.GetObjectInput) error {
 	var errDownloader, errUploader error
@@ -59,13 +55,14 @@ func DownloadFromS3UploadToSftp(ctx context.Context, s3ObjectInput *s3.GetObject
 
 	// We define a cancel context to ensure errors with the downloader will halt the uploader, and this function will exit gracefully with an error
 	ctx, cancelFunc := context.WithCancel(ctx)
+	defer cancelFunc()
 
 	go func() {
 		defer pw.Close() // pipewriter must be closed immediately or reader will not get the EOF signal
 
 		errDownloader = s3helper.DownloadToMemoryBuffer(s3ObjectInput, pw)
 		if errDownloader != nil {
-			fmt.Println("Error in goroutine:", errDownloader.Error())
+			fmt.Println("Error in downloader goroutine:", errDownloader.Error())
 			cancelFunc()
 		}
 	}()
@@ -74,10 +71,11 @@ func DownloadFromS3UploadToSftp(ctx context.Context, s3ObjectInput *s3.GetObject
 		defer pr.Close()
 
 		// Uploader takes in a context to handle early cancellation. Please note that a corrupted file may exist in the remote SFTP server if the downloader terminates.
-		errUploader = c.UploadWithContext(ctx, pr, config.GetInstance().UploadPath, GetFileName(&clock.RealClock{}, *s3ObjectInput.Key))
+		errUploader = c.UploadWithContext(ctx, pr, config.GetInstance().UploadPath, getFileName(&clock.RealClock{}, *s3ObjectInput.Key))
 		if errUploader != nil {
-			fmt.Println("Error in goroutine:", errUploader.Error())
+			fmt.Println("Error in uploader goroutine:", errUploader.Error())
 			cancelFunc()
+			return
 		}
 
 		chanUploaderOK <- true
@@ -101,7 +99,11 @@ func DownloadFromS3UploadToSftp(ctx context.Context, s3ObjectInput *s3.GetObject
 }
 
 // GetFileName gives the filename of the s3 key prefixed with a timestamp in the format 20060102150405filename.ext, referencing from Mon Jan 2 15:04:05 -0700 MST 2006
-func GetFileName(clock clock.Clock, s3key string) string {
+func getFileName(clock clock.Clock, s3key string) string {
 	ss := strings.Split(s3key, "/")
 	return clock.Now().Format("20060102150405") + ss[len(ss)-1]
+}
+
+func main() {
+	lambda.Start(Handler)
 }
