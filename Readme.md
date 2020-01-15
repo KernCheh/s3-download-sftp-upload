@@ -4,6 +4,7 @@
 
  Name | Required | Default | Description |
 |------|----------|---------|-------------|
+| `AUTHORIZED_CONFIG_ID` | n | `-` | S3 Trigger notification name. Providing this ensures no other notifications are filtered out. Otherwise, all notifications will be processed |
 | `SFTP_HOST` | y | `-` | Destination SFTP Host name, e.g `sftp.domain.com`  |
 | `SFTP_PORT` | y | `22` | Destination SFTP Port  |
 | `SFTP_USERNAME` | y | `-` | Destination SFTP User Name   |
