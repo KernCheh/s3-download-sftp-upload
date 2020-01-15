@@ -1,7 +1,6 @@
 package sftphelper
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -75,8 +74,7 @@ func (c *Client) Upload(reader io.Reader, directory, filename string) error {
 		return fmt.Errorf("[SFTP Helper] Error with file integrity check with %s: %s", uploadFileName, err.Error())
 	}
 
-	bb, _ := json.Marshal(fi)
-	fmt.Println("[SFTP Helper] File upload successful:", string(bb))
+	fmt.Printf("[SFTP Helper] File upload successful: %+v\n", fi)
 
 	return nil
 }
