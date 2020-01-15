@@ -25,7 +25,7 @@ provider:
   name: aws
   stage: ${opt:stage, 'dev'}
   runtime: go1.x
-  memorySize: 256
+  memorySize: 128
   timeout: 300
   region: ap-southeast-1
   role: arn:aws:iam::155325106561:role/lambda_basic_execution
