@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"sync"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -36,7 +35,7 @@ func Handler(ctx context.Context, s3Event events.S3Event) {
 			Key:    aws.String(s3Entity.Object.Key),
 		}
 
-		if err = DownloadFromS3UploadToSftp(&s3ObjectInput); err != nil {
+		if err = DownloadFromS3UploadToSftp(context.Background(), &s3ObjectInput); err != nil {
 			panic(err)
 		}
 	}
@@ -47,53 +46,55 @@ func main() {
 }
 
 // DownloadFromS3UploadToSftp downloads the file specified in s3ObjectInput and upload to SFTP server specified in environment variables `SFTP_HOST`, `SFTP_PORT`, `SFTP_USERNAME`, `SFTP_PASSWORD` and `UPLOAD_PATH`
-func DownloadFromS3UploadToSftp(s3ObjectInput *s3.GetObjectInput) error {
-	var wg sync.WaitGroup
-	var errUploader error
+func DownloadFromS3UploadToSftp(ctx context.Context, s3ObjectInput *s3.GetObjectInput) error {
+	var errDownloader, errUploader error
+	chanUploaderOK := make(chan bool)
 
 	c, err := sftphelper.GetClient()
 	if err != nil {
 		return err
 	}
 
-	wg.Add(2)
-
 	pr, pw := io.Pipe()
+
+	// We define a cancel context to ensure errors with the downloader will halt the uploader, and this function will exit gracefully with an error
+	ctx, cancelFunc := context.WithCancel(ctx)
 
 	go func() {
 		defer pw.Close() // pipewriter must be closed immediately or reader will not get the EOF signal
 
-		defer func() {
-			if err := recover(); err != nil {
-				pw.Close()
-				fmt.Println("Error in goroutine:", err)
-				wg.Done()
-				panic(err)
-			}
-		}()
-
-		err = s3helper.DownloadToMemoryBuffer(s3ObjectInput, pw)
-		if err != nil {
-			panic(err)
+		errDownloader = s3helper.DownloadToMemoryBuffer(s3ObjectInput, pw)
+		if errDownloader != nil {
+			fmt.Println("Error in goroutine:", errDownloader.Error())
+			cancelFunc()
 		}
-
-		wg.Done()
 	}()
 
 	go func() {
 		defer pr.Close()
 
-		errUploader = c.Upload(pr, config.GetInstance().UploadPath, GetFileName(&clock.RealClock{}, *s3ObjectInput.Key))
-		if err != nil {
+		// Uploader takes in a context to handle early cancellation. Please note that a corrupted file may exist in the remote SFTP server if the downloader terminates.
+		errUploader = c.UploadWithContext(ctx, pr, config.GetInstance().UploadPath, GetFileName(&clock.RealClock{}, *s3ObjectInput.Key))
+		if errUploader != nil {
 			fmt.Println("Error in goroutine:", errUploader.Error())
+			cancelFunc()
 		}
 
-		wg.Done()
+		chanUploaderOK <- true
 	}()
 
-	wg.Wait()
+	select {
+	case <-chanUploaderOK:
+		// No issue
+	case <-ctx.Done():
+		// cancelFunc called
+		if errDownloader == nil {
+			return errUploader
+		}
+		return errDownloader
+	}
 
-	return errUploader
+	return nil
 }
 
 // GetFileName gives the filename of the s3 key prefixed with a timestamp in the format 20060102150405filename.ext, referencing from Mon Jan 2 15:04:05 -0700 MST 2006

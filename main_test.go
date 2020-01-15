@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -41,6 +42,7 @@ func TestDownloadFromS3UploadToSftp(t *testing.T) {
 	// Warning: This test will fail if env variables for sftp server is not set properly
 	// defer profile.Start(profile.MemProfile).Stop()
 	type args struct {
+		ctx           context.Context
 		s3ObjectInput *s3.GetObjectInput
 	}
 	tests := []struct {
@@ -51,6 +53,7 @@ func TestDownloadFromS3UploadToSftp(t *testing.T) {
 		{
 			name: "try 40mb file",
 			args: args{
+				ctx: context.Background(),
 				s3ObjectInput: &s3.GetObjectInput{
 					Bucket: aws.String("bv-test-sftp"),
 					Key:    aws.String("product_feed/bazaar_voice/default.xml"),
@@ -61,7 +64,7 @@ func TestDownloadFromS3UploadToSftp(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := DownloadFromS3UploadToSftp(tt.args.s3ObjectInput); (err != nil) != tt.wantErr {
+			if err := DownloadFromS3UploadToSftp(tt.args.ctx, tt.args.s3ObjectInput); (err != nil) != tt.wantErr {
 				t.Errorf("DownloadFromS3UploadToSftp() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

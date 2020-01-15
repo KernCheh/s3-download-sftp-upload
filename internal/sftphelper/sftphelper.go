@@ -1,6 +1,7 @@
 package sftphelper
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -77,4 +78,21 @@ func (c *Client) Upload(reader io.Reader, directory, filename string) error {
 	fmt.Printf("[SFTP Helper] File upload successful: %+v\n", fi)
 
 	return nil
+}
+
+func (c *Client) UploadWithContext(ctx context.Context, reader io.Reader, directory, filename string) error {
+	var err error
+	okChan := make(chan bool)
+	go func() {
+		err = c.Upload(reader, directory, filename)
+		okChan <- true
+	}()
+
+	select {
+	case <-okChan:
+
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return err
 }
