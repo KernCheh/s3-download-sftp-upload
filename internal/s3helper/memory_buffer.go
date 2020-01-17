@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
@@ -39,6 +40,36 @@ func DownloadToMemoryBuffer(s3ObjectInput *s3.GetObjectInput, pw *io.PipeWriter)
 	}
 
 	fmt.Printf("[S3 Helper] Download file complete: %s/%s\n", *s3ObjectInput.Bucket, *s3ObjectInput.Key)
+
+	return nil
+}
+
+// DeleteObject deletes an s3 object
+func DeleteObject(bucket, key string) error {
+	sess := session.Must(session.NewSession(&aws.Config{
+		Region: aws.String("ap-southeast-1"),
+	}))
+	s3Svc := s3.New(sess)
+
+	input := &s3.DeleteObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	}
+
+	_, err := s3Svc.DeleteObject(input)
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			switch aerr.Code() {
+			default:
+				fmt.Println("[S3 Helper] Error:", aerr.Error())
+				return aerr.OrigErr()
+			}
+		} else {
+			// Print the error, cast err to awserr.Error to get the Code and
+			// Message from an error.
+			return fmt.Errorf("[S3 Helper] Error deleting file from %s/%s: %s", bucket, key, err.Error())
+		}
+	}
 
 	return nil
 }

@@ -62,6 +62,14 @@ func DownloadFromS3UploadToSftp(ctx context.Context, s3ObjectInput *s3.GetObject
 			fmt.Println("Error in downloader goroutine:", errDownloader.Error())
 			cancelFunc()
 		}
+
+		if config.GetInstance().DeleteAfterUpload == "true" {
+			errDownloader = s3helper.DeleteObject(*s3ObjectInput.Bucket, *s3ObjectInput.Key)
+			if errDownloader != nil {
+				fmt.Println("Error in downloader goroutine:", errDownloader.Error())
+				cancelFunc()
+			}
+		}
 	}()
 
 	go func() {
