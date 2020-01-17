@@ -33,11 +33,14 @@ func GetClient() (*Client, error) {
 	sshConfig.Config.KeyExchanges = append(sshConfig.Config.KeyExchanges, "diffie-hellman-group-exchange-sha1", "diffie-hellman-group-exchange-sha256")
 
 	connURI := fmt.Sprintf("%s:%s", config.GetInstance().SftpHost, config.GetInstance().SftpPort)
+
+	fmt.Println("[SFTP Helper] Connecting to SFTP server at", connURI)
 	c, err := ssh.Dial("tcp", connURI, sshConfig)
 	if err != nil {
 		return nil, fmt.Errorf("[SFTP Helper] Error connecting: %s", err.Error())
 	}
 
+	fmt.Println("[SFTP Helper] Connected to SFTP server")
 	return &Client{sshClient: c}, nil
 }
 

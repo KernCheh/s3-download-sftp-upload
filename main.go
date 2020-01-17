@@ -44,12 +44,9 @@ func Handler(ctx context.Context, s3Event events.S3Event) {
 // DownloadFromS3UploadToSftp downloads the file specified in s3ObjectInput and upload to SFTP server specified in environment variables `SFTP_HOST`, `SFTP_PORT`, `SFTP_USERNAME`, `SFTP_PASSWORD` and `UPLOAD_PATH`
 func DownloadFromS3UploadToSftp(ctx context.Context, s3ObjectInput *s3.GetObjectInput) error {
 	var errDownloader, errUploader error
-	chanUploaderOK := make(chan bool)
+	var c *sftphelper.Client
 
-	c, err := sftphelper.GetClient()
-	if err != nil {
-		return err
-	}
+	chanUploaderOK := make(chan bool)
 
 	pr, pw := io.Pipe()
 
@@ -69,6 +66,15 @@ func DownloadFromS3UploadToSftp(ctx context.Context, s3ObjectInput *s3.GetObject
 
 	go func() {
 		defer pr.Close()
+
+		if c == nil {
+			c, errUploader = sftphelper.GetClient()
+			if errUploader != nil {
+				fmt.Println("Error in uploader goroutine:", errUploader.Error())
+				cancelFunc()
+				return
+			}
+		}
 
 		// Uploader takes in a context to handle early cancellation. Please note that a corrupted file may exist in the remote SFTP server if the downloader terminates.
 		errUploader = c.UploadWithContext(ctx, pr, config.GetInstance().UploadPath, getFileName(&clock.RealClock{}, *s3ObjectInput.Key))
