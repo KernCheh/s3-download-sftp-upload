@@ -8,8 +8,8 @@ import (
 	"io"
 )
 
-// DecompressByteStream
-// Warning: This function is blocking until an EOF is given to reader
+// DecompressByteStream decompresses an incoming stream of bytes.
+// Returns a io.ReadCloser with the decompressed stream
 func DecompressByteStream(reader io.Reader, cancelFunc context.CancelFunc) (io.ReadCloser, error) {
 	isGzip := false
 
@@ -18,11 +18,14 @@ func DecompressByteStream(reader io.Reader, cancelFunc context.CancelFunc) (io.R
 	gzipDetermined := make(chan bool)
 
 	go func() {
-		buf := make([]byte, 2)
+		defer pw2.Close()
 
-		nr, err := reader.Read(buf)
+		buf := make([]byte, 2)
 		var bytesWritten int64
 
+		// Read the first two bytes to check if file is gzipped.
+		// Gzipped files have bytes 31 and 139 preamble
+		nr, err := reader.Read(buf)
 		if err != nil {
 			fmt.Println("[GZip Decompressor] Error:", err.Error())
 			cancelFunc()
@@ -31,52 +34,49 @@ func DecompressByteStream(reader io.Reader, cancelFunc context.CancelFunc) (io.R
 
 		// Gzip check
 		if nr > 0 {
-			gzipPressemble := []byte{31, 139}
-			if bytes.Equal(buf, gzipPressemble) {
+			gzipPreamble := []byte{31, 139}
+			if bytes.Equal(buf, gzipPreamble) {
 				isGzip = true
 			}
-			gzipDetermined <- true
 		}
+		gzipDetermined <- true
 
+		// Pipe the first two bytes and everything else into a new pipe
 		nw, err := pw2.Write(buf)
 		if err != nil {
-			fmt.Println("[GZip Decompressor] Stream 2 Write Error:", err.Error())
+			fmt.Println("[GZip Decompressor] Outgoing stream Write Error:", err.Error())
 			cancelFunc()
 			return
 		}
 		bytesWritten += int64(nw)
 
-		remainingBuf := bytes.Buffer{}
-		_, err = remainingBuf.ReadFrom(reader)
-		if err != nil {
-			if err != io.EOF {
-				fmt.Println("[GZip Decompressor] Stream 1 Read Error:", err.Error())
-				cancelFunc()
-				return
-			}
-
-			fmt.Println("[GZip Decompressor] Stream 1 EOF Reached")
-			// fmt.Println(newbuf)
-			return
-		}
-
-		go func() {
-			defer pw2.Close()
-
-			writtenBytes, err := remainingBuf.WriteTo(pw2)
+		// Drain the remaining bytes into the new pipe
+		remainingBuf := make([]byte, 2<<15)
+		for {
+			nr, err = reader.Read(remainingBuf)
 			if err != nil {
-				fmt.Println("[GZip Decompressor] Stream 2 Write Error:", err.Error())
+				if err != io.EOF {
+					fmt.Println("[GZip Decompressor] Incoming stream Read Error:", err.Error())
+					cancelFunc()
+				}
+				//EOF
+				fmt.Printf("[GZip Decompressor] Outgoing stream Write Completed, %v bytes written\n", bytesWritten)
+				return
+			}
+
+			nw, err = pw2.Write(remainingBuf[:nr])
+			if err != nil {
+				fmt.Println("[GZip Decompressor] Outgoing stream Write Error:", err.Error())
 				cancelFunc()
 				return
 			}
-			bytesWritten += writtenBytes
-			fmt.Printf("[GZip Decompressor] Stream 2 Write Completed, %v bytes written\n", bytesWritten)
-		}()
+			bytesWritten += int64(nw)
+		}
 	}()
 
 	<-gzipDetermined
 	if isGzip {
-		fmt.Println("isgzip")
+		fmt.Println("[GZip Decompressor] Gzipped content detected. Output stream will be unzipped bytes.")
 		return gzip.NewReader(pr2)
 	}
 	return pr2, nil
