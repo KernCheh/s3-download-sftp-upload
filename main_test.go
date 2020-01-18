@@ -61,6 +61,17 @@ func TestDownloadFromS3UploadToSftp(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "try gzipped file",
+			args: args{
+				ctx: context.Background(),
+				s3ObjectInput: &s3.GetObjectInput{
+					Bucket: aws.String("luxola-assets-staging-aws-th"),
+					Key:    aws.String("product_feed/bazaar_voice/thailand.xml"),
+				},
+			},
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

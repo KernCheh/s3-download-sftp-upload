@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/sephora-sea/s3-download-sftp-upload/internal/clock"
 	"github.com/sephora-sea/s3-download-sftp-upload/internal/config"
+	"github.com/sephora-sea/s3-download-sftp-upload/internal/gzipdecompressor"
 	"github.com/sephora-sea/s3-download-sftp-upload/internal/s3helper"
 	"github.com/sephora-sea/s3-download-sftp-upload/internal/sftphelper"
 )
@@ -43,8 +44,9 @@ func Handler(ctx context.Context, s3Event events.S3Event) {
 
 // DownloadFromS3UploadToSftp downloads the file specified in s3ObjectInput and upload to SFTP server specified in environment variables `SFTP_HOST`, `SFTP_PORT`, `SFTP_USERNAME`, `SFTP_PASSWORD` and `UPLOAD_PATH`
 func DownloadFromS3UploadToSftp(ctx context.Context, s3ObjectInput *s3.GetObjectInput) error {
-	var errDownloader, errUploader error
+	var errDownloader, errDecompressor, errUploader error
 	var c *sftphelper.Client
+	var decompressedReader io.ReadCloser
 
 	chanUploaderOK := make(chan bool)
 
@@ -62,10 +64,28 @@ func DownloadFromS3UploadToSftp(ctx context.Context, s3ObjectInput *s3.GetObject
 			fmt.Println("Error in downloader goroutine:", errDownloader.Error())
 			cancelFunc()
 		}
+
+		if config.GetInstance().DeleteAfterUpload == "true" {
+			errDownloader = s3helper.DeleteObject(*s3ObjectInput.Bucket, *s3ObjectInput.Key)
+			if errDownloader != nil {
+				fmt.Println("Error in downloader goroutine:", errDownloader.Error())
+				cancelFunc()
+			}
+		}
 	}()
 
 	go func() {
 		defer pr.Close()
+
+		// Attempt to gzip decompress bytes. Doesn't matter if input stream is not compressed.
+		decompressedReader, errDecompressor = gzipdecompressor.DecompressByteStream(pr, cancelFunc)
+		if errDecompressor != nil {
+			fmt.Println("Error in decompressor goroutine:", errDecompressor.Error())
+			cancelFunc()
+			return
+		}
+
+		defer decompressedReader.Close()
 
 		if c == nil {
 			c, errUploader = sftphelper.GetClient()
@@ -77,7 +97,7 @@ func DownloadFromS3UploadToSftp(ctx context.Context, s3ObjectInput *s3.GetObject
 		}
 
 		// Uploader takes in a context to handle early cancellation. Please note that a corrupted file may exist in the remote SFTP server if the downloader terminates.
-		errUploader = c.UploadWithContext(ctx, pr, config.GetInstance().UploadPath, getFileName(&clock.RealClock{}, *s3ObjectInput.Key))
+		errUploader = c.UploadWithContext(ctx, decompressedReader, config.GetInstance().UploadPath, getFileName(&clock.RealClock{}, *s3ObjectInput.Key))
 		if errUploader != nil {
 			fmt.Println("Error in uploader goroutine:", errUploader.Error())
 			cancelFunc()

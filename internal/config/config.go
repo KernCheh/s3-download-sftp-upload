@@ -19,6 +19,8 @@ type Config struct {
 	SftpPassword string `envconfig:"SFTP_PASSWORD"`
 
 	UploadPath string `envconfig:"UPLOAD_PATH" default:"/import-inbox/"`
+
+	DeleteAfterUpload string `envconfig:"DELETE_AFTER_UPLOAD" default:"false"`
 }
 
 var instance *Config
