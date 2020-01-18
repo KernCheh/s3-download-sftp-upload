@@ -11,15 +11,18 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
 
-type writeAtBuffer struct {
-	w io.Writer
+// WriteAtBuffer is a workaround to implement the io.WriterAt interface on a io.Writer.
+// Since WriteAt position cannot be supported in io.Writer,
+// it is the user's responsibility to ensure WriteAt() method is called sequentially.
+type WriteAtBuffer struct {
+	Writer io.Writer
 }
 
-// WriteAt writes a slice of bytes to a buffer starting at the position provided
-// The number of bytes written will be returned, or error. Can overwrite previous
-// written slices if the write ats overlap.
-func (fw *writeAtBuffer) WriteAt(p []byte, pos int64) (n int, err error) {
-	return fw.w.Write(p)
+// WriteAt writes a slice of bytes to the end of the buffer.
+// The number of bytes written will be returned, or error.
+// The positioning argument is ignored.
+func (fw *WriteAtBuffer) WriteAt(p []byte, _ int64) (n int, err error) {
+	return fw.Writer.Write(p)
 }
 
 // DownloadToMemoryBuffer downloads a file from s3 to a io.PipeWriter. Closes the pipewriter afterwards
@@ -35,7 +38,7 @@ func DownloadToMemoryBuffer(s3ObjectInput *s3.GetObjectInput, pw *io.PipeWriter)
 
 	fmt.Printf("[S3 Helper] Commencing download of file from %s/%s\n", *s3ObjectInput.Bucket, *s3ObjectInput.Key)
 
-	if _, err = downloader.Download(&writeAtBuffer{w: pw}, s3ObjectInput); err != nil {
+	if _, err = downloader.Download(&WriteAtBuffer{Writer: pw}, s3ObjectInput); err != nil {
 		return fmt.Errorf("[S3 Helper] Error downloading file at %s/%s: %s", *s3ObjectInput.Bucket, *s3ObjectInput.Key, err.Error())
 	}
 
