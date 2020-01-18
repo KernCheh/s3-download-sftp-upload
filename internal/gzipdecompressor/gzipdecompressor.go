@@ -8,8 +8,9 @@ import (
 	"io"
 )
 
-// DecompressByteStream decompresses an incoming stream of bytes.
+// DecompressByteStream decompresses an incoming stream of bytes, returning a decompressed stream.
 // Returns a io.ReadCloser with the decompressed stream
+// If the input stream is not gzip compressed, the output stream will be the same as the input stream
 func DecompressByteStream(reader io.Reader, cancelFunc context.CancelFunc) (io.ReadCloser, error) {
 	isGzip := false
 
